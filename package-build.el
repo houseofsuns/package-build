@@ -183,6 +183,8 @@ Otherwise do nothing.  FORMAT-STRING and ARGS are as per that function."
 ;;;; Public
 
 (defun package-build-get-tag-version (rcp)
+  "For RCP determine the latest tag.
+Return (COMMIT . VERSION)."
   (pcase-let ((`(,tag . ,version)
                (package-build--find-version-newest
                 (package-build--list-tags rcp)
@@ -195,15 +197,24 @@ Otherwise do nothing.  FORMAT-STRING and ARGS are as per that function."
           version)))
 
 (defun package-build-get-timestamp-version (rcp)
-  (let ((rev (and (cl-typep rcp 'package-git-recipe)
-                  (or (oref rcp commit)
-                      (when-let ((branch (oref rcp branch)))
-                        (concat "origin/" branch))
-                      "origin/HEAD"))))
+  "For RCP determine a version string that looks like \"20220121.666\".
+Return (COMMIT . VERSION)."
+  (let ((rev (package-build--get-tip-commit rcp)))
     (cons (package-build--get-commit rcp rev)
           (package-build--parse-time
            (package-build--get-timestamp rcp rev)
            (oref rcp time-regexp)))))
+
+(defun package-build-get-tag-based-version (rcp)
+  "For RCP determine a version string that looks like \"2.4.0.121\".
+Such version strings are designed to resemble the output of
+\"git describe\" (such as \"2.4-121-g6158982\").
+Return (COMMIT . VERSION)."
+  ;; TODO Support mercurial.
+  (if (cl-typep rcp 'package-hg-recipe)
+      (package-build-get-timestamp-version rcp)
+    (let ((rev (package-build--get-tip-commit rcp)))
+      rev))) ; TODO
 
 ;;;; Internal
 
@@ -364,6 +375,14 @@ is used instead."
 (cl-defmethod package-build--get-commit ((rcp package-git-recipe) &optional rev)
   (let ((default-directory (package-recipe--working-tree rcp)))
     (car (process-lines "git" "rev-parse" (or rev "HEAD")))))
+
+;; TODO Define as generic function and add method for mercurial.
+(defun package-build--get-tip-commit (rcp)
+  (and (cl-typep rcp 'package-git-recipe)
+       (or (oref rcp commit)
+           (when-let ((branch (oref rcp branch)))
+             (concat "origin/" branch))
+           "origin/HEAD")))
 
 ;;;; Hg
 
